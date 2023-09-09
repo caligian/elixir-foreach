@@ -1,12 +1,7 @@
 defmodule Foreach do
-  defp pp(x) do
-    IO.inspect(x)
-  end
-
   def get_placeholders(cmd) do
     regex = ~r"(?<=%)([a-zA-Z0-9_-]+)"
     repl = Regex.scan(regex, cmd)
-
     repl =
       case repl do
         [] ->
@@ -97,6 +92,7 @@ defmodule Foreach do
       spawn(fn ->
         for x <- cmds do
           {out, exit_code} = System.shell(x)
+
           case exit_code do
             0 ->
               if not options[:quiet], do: IO.write(out)
@@ -157,57 +153,57 @@ defmodule Foreach do
 
   def parse_cmdline() do
     specs = [
-      %Switch{name: "d", long: "define", n: "*"},
-      %Switch{name: "i", long: "stdin", without: ["f"]},
-      %Switch{name: "f", long: "file", n: 1, without: ["i"], type: :contents},
-      %Switch{name: "j", long: "threads", n: "?", post: &Integer.parse(&1), default: fn -> 5 end},
-      %Switch{name: "r", long: "run", n: 1},
-      %Switch{name: "q", long: "quiet"},
-      %Switch{name: "s", long: "sep", n: 1, default: fn -> ~r"[\n\r]" end, type: :regex},
-      %Switch{name: "t", long: "timeout", n: 1, default: fn -> 200 end, type: :integer}
+      %{name: "d", long: "define", n: "*"},
+      %{name: "i", long: "stdin", without: ["f"]},
+      %{name: "f", long: "file", n: 1, without: ["i"], type: :contents},
+      %{name: "j", long: "threads", n: "?", type: :int, default: fn -> 5 end},
+      %{name: "r", long: "run", n: 1},
+      %{name: "q", long: "quiet"},
+      %{name: "s", long: "sep", n: 1, default: fn -> ~r"[\n\r]" end, type: :regex},
+      %{name: "t", long: "timeout", n: 1, default: fn -> 200 end, type: :integer}
     ]
 
-    parsed = Argparser.parse!(specs)
+    {:ok, parsed} = Argparser.parse!("Drop-in replacement for xargs", specs)
+    {pos, named} = parsed
+    cmd = Enum.join(pos, " ")
 
-    cond do
-      parsed == false -> 
-        raise WrongSpecError, message: "no commandline arguments passed"
-
-      is_tuple(parsed) and not Enum.all?(Tuple.to_list(parsed)) ->
-        raise WrongSpecError, message: "specs missing"
-
-      true ->
-        {pos, named} = parsed
-        cmd = Enum.join(pos, " ")
-
-        lines = cond do
-          named[:stdin] -> 
-            Argparser.get_stdin() 
-
-
-          named[:file] ->
-            String.split(named[:file], named[:sep])
-
-          named[:run] ->
-            {out, exit_code} = System.shell(named[:run])
-            if exit_code != 0 do
-              raise WrongSpecError, message: "cmd failed in shell: #{named[:run]}"
-            else
-              String.split(out, named[:sep])
-            end
-
-          true ->
-            raise WrongSpecError, message: "no input lines provided"
-        end
-
-        %{
-          lines: lines,
-          cmd: cmd,
-          defs: named[:define] || false,
-          options: %{quiet: named[:quiet] || false, threads: named[:threads], timeout: named[:timeout]}
-        }
+    unless length(pos) > 0 do
+      raise WrongSpecError, "no positional args provided"
     end
+
+    lines =
+      cond do
+        named[:stdin] ->
+          Argparser.get_stdin(named[:sep])
+
+        named[:file] ->
+          String.split(named[:file], named[:sep])
+
+        named[:run] ->
+          {out, exit_code} = System.shell(named[:run])
+
+          if exit_code != 0 do
+            raise WrongSpecError, message: "cmd failed in shell: #{named[:run]}"
+          else
+            String.split(out, named[:sep])
+          end
+      end
+
+    %{
+      lines: lines,
+      cmd: cmd,
+      defs: named[:define] || false,
+      options: %{
+        quiet: named[:quiet] || false,
+        threads: named[:threads],
+        timeout: named[:timeout]
+      }
+    }
   end
 end
 
-Foreach.main()
+defmodule Foreach.CLI do
+  def main(_ \\ []) do
+    Foreach.main()
+  end
+end
