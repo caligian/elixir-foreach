@@ -207,3 +207,4 @@ defmodule Foreach.CLI do
     Foreach.main()
   end
 end
+
