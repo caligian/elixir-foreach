@@ -114,6 +114,7 @@ defmodule Foreach do
   end
 
   def run!(cmd, lines, defs, options) do
+    lines = Enum.filter(lines, fn x -> String.length(x) > 0 end)
     placeholders = get_placeholders(cmd)
     subs = get_subs(lines, placeholders, defs, [])
     cmds = do_subs(cmd, placeholders, subs, [])
